@@ -33,6 +33,15 @@ M.commands = {
   health = function()
     vim.cmd.checkhealth("lazy")
   end,
+  packspec = function()
+    require("lazy.core.packspec").update()
+    require("lazy.manage.reloader").reload({
+      {
+        file = "packspec", --Config.options.packspec.path,
+        what = "changed",
+      },
+    })
+  end,
   home = function()
     View.show("home")
   end,

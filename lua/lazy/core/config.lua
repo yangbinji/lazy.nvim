@@ -254,6 +254,8 @@ function M.setup(opts)
           require("lazy.manage.checker").start()
         end, 10)
       end
+
+      -- useful for plugin developers when making changes to a packspec file
       vim.api.nvim_create_autocmd("BufWritePost", {
         pattern = "package.lua",
         callback = function()
