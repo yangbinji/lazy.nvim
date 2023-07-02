@@ -1,6 +1,7 @@
 local Config = require("lazy.core.config")
 local Util = require("lazy.core.util")
 local Handler = require("lazy.core.handler")
+local Packspec = require("lazy.core.packspec")
 
 ---@class LazyCorePlugin
 local M = {}
@@ -13,6 +14,7 @@ M.loading = false
 ---@field notifs {msg:string, level:number, file?:string}[]
 ---@field importing? string
 ---@field optional? boolean
+---@field packspecs table<string, boolean>
 local Spec = {}
 M.Spec = Spec
 
@@ -24,6 +26,7 @@ function Spec.new(spec, opts)
   self.disabled = {}
   self.modules = {}
   self.notifs = {}
+  self.packspecs = {}
   self.optional = opts and opts.optional
   if spec then
     self:parse(spec)
@@ -122,6 +125,15 @@ function Spec:add(plugin, results, is_dep)
     ---@diagnostic disable-next-line: assign-type-mismatch
     plugin.opts = plugin.config
     plugin.config = nil
+  end
+
+  -- import the plugin's spec
+  if Config.options.packspec.enabled and plugin.dir and not self.packspecs[plugin.dir] then
+    self.packspecs[plugin.dir] = true
+    local packspec = Packspec.get(plugin.dir)
+    if packspec then
+      self:normalize(packspec, nil, true)
+    end
   end
 
   plugin._ = {}
