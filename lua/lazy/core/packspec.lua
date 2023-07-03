@@ -3,10 +3,10 @@ local Util = require("lazy.util")
 
 ---@class PackSpec
 ---@field dependencies? table<string, string>
----@field lazy? LazySpec
+---@field custom?: {lazy?:LazyPluginSpec}
 local M = {}
 
-M.lazy_file = "lazy-pkg.lua"
+M.lazy_file = "lazy.lua"
 M.pkg_file = "pkg.json"
 
 ---@alias LazyPkg {lazy?:(fun():LazySpec), pkg?:PackSpec}
@@ -17,21 +17,34 @@ M.packspecs = nil
 M.specs = {}
 
 ---@param spec LazyPkg
+---@param plugin LazyPlugin
 ---@return LazySpec?
-local function convert(spec)
-  local ret = spec.lazy and spec.lazy() or {}
+local function convert(plugin, spec)
+  ---@type LazySpec
+  local ret = {}
+
   local pkg = spec.pkg
   if pkg then
     if pkg.dependencies then
-      ret = { ret }
       for url, version in pairs(pkg.dependencies) do
-        if version == "*" or version == "" then
+        if (not Config.options.packspec.versions) or version == "*" or version == "" then
           version = nil
         end
-        table.insert(ret, 1, { url = url, version = version })
+        ret[#ret + 1] = { url = url, version = version }
       end
     end
+    local p = vim.tbl_get(pkg, "custom", "lazy")
+    if p then
+      p.url = p.url or plugin.url
+      p.dir = p.dir or plugin.dir
+      ret[#ret + 1] = p
+    end
   end
+
+  if spec.lazy then
+    ret[#ret + 1] = spec.lazy()
+  end
+
   return ret
 end
 
@@ -46,17 +59,18 @@ local function load()
   Util.track()
 end
 
+---@param plugin LazyPlugin
 ---@return LazySpec?
-function M.get(dir)
+function M.get(plugin)
   if not M.packspecs then
     load()
   end
 
-  if not M.packspecs[dir] then
+  if not M.packspecs[plugin.dir] then
     return
   end
-  M.specs[dir] = M.specs[dir] or convert(M.packspecs[dir])
-  return M.specs[dir]
+  M.specs[plugin.dir] = M.specs[plugin.dir] or convert(plugin, M.packspecs[plugin.dir])
+  return M.specs[plugin.dir]
 end
 
 function M.update()

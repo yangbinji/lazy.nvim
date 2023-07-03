@@ -143,7 +143,7 @@ function Spec:add(plugin, results, is_dep)
   -- import the plugin's spec
   if Config.options.packspec.enabled and plugin.dir and not self.packspecs[plugin.dir] then
     self.packspecs[plugin.dir] = true
-    local packspec = Packspec.get(plugin.dir)
+    local packspec = Packspec.get(plugin)
     if packspec then
       self:normalize(packspec, nil, true)
     end
