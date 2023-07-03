@@ -6,23 +6,30 @@ local Util = require("lazy.util")
 ---@field lazy? LazySpec
 local M = {}
 
----@type table<string, LazySpec|fun():PackSpec>
-M.packspecs = nil
+M.lazy_file = "lazy-pkg.lua"
+M.pkg_file = "pkg.json"
 
----@param spec PackSpec
+---@alias LazyPkg {lazy?:(fun():LazySpec), pkg?:PackSpec}
+
+---@type table<string, LazyPkg>
+M.packspecs = nil
+---@type table<string, LazySpec>
+M.specs = {}
+
+---@param spec LazyPkg
 ---@return LazySpec?
 local function convert(spec)
-  if not spec then
-    return
-  end
-  local ret = spec.lazy or {}
-  if spec.dependencies then
-    ret = { ret }
-    for url, version in pairs(spec.dependencies) do
-      if version == "*" or version == "" then
-        version = nil
+  local ret = spec.lazy and spec.lazy() or {}
+  local pkg = spec.pkg
+  if pkg then
+    if pkg.dependencies then
+      ret = { ret }
+      for url, version in pairs(pkg.dependencies) do
+        if version == "*" or version == "" then
+          version = nil
+        end
+        table.insert(ret, 1, { url = url, version = version })
       end
-      table.insert(ret, 1, { url = url, version = version })
     end
   end
   return ret
@@ -48,34 +55,51 @@ function M.get(dir)
   if not M.packspecs[dir] then
     return
   end
-  if type(M.packspecs[dir]) == "function" then
-    M.packspecs[dir] = convert(M.packspecs[dir]())
-  end
-  ---@diagnostic disable-next-line: return-type-mismatch
-  return M.packspecs[dir]
+  M.specs[dir] = M.specs[dir] or convert(M.packspecs[dir])
+  return M.specs[dir]
 end
 
 function M.update()
-  ---@type string[]
-  local lines = { "local M = {}" }
+  local ret = {}
   for _, plugin in pairs(Config.plugins) do
-    local file = Util.norm(plugin.dir .. "/package.lua")
-    if Util.file_exists(file) then
-      ---@type PackSpec
-      local packspec = Util.try(function()
-        return dofile(file)
-      end, "`package.lua` for **" .. plugin.name .. "** has errors:")
-      if packspec then
-        lines[#lines + 1] = ([[M[%q] = function() %s end]]):format(plugin.dir, Util.read_file(file))
-      else
-        Util.error("Invalid `package.lua` for **" .. plugin.name .. "**")
-      end
+    local spec = {
+      pkg = M.pkg(plugin),
+      lazy = M.lazy_pkg(plugin),
+    }
+    if not vim.tbl_isempty(spec) then
+      ret[plugin.dir] = spec
     end
   end
-  lines[#lines + 1] = "return M"
-  local code = table.concat(lines, "\n")
+  local code = "return " .. Util.dump(ret)
   Util.write_file(Config.options.packspec.path, code)
   M.packspecs = nil
+end
+
+---@param plugin LazyPlugin
+function M.lazy_pkg(plugin)
+  local file = Util.norm(plugin.dir .. "/" .. M.lazy_file)
+  if Util.file_exists(file) then
+    ---@type LazySpec
+    local chunk = Util.try(function()
+      return loadfile(file)
+    end, "`" .. M.lazy_file .. "` for **" .. plugin.name .. "** has errors:")
+    if chunk then
+      return { _raw = ([[function() %s end]]):format(Util.read_file(file)) }
+    else
+      Util.error("Invalid `package.lua` for **" .. plugin.name .. "**")
+    end
+  end
+end
+
+---@param plugin LazyPlugin
+function M.pkg(plugin)
+  local file = Util.norm(plugin.dir .. "/" .. M.pkg_file)
+  if Util.file_exists(file) then
+    ---@type PackSpec
+    return Util.try(function()
+      return vim.json.decode(Util.read_file(file))
+    end, "`" .. M.pkg_file .. "` for **" .. plugin.name .. "** has errors:")
+  end
 end
 
 return M
